@@ -34,7 +34,7 @@
     <p>This is a simple static website hosted using GitHub Pages.</p>
 
     <h2>Contact</h2>
-    <p>You can reach me at <a href="mailto:your.email@example.com">pragathsubbaiah@gmail.com</a>.</p>
+    <p>You can reach me at <a href="mailto:your.email@example.com">your.email@example.com</a>.</p>
   </main>
 
   <footer>
@@ -42,6 +42,11 @@
   </footer>
 <script defer>
   (function () {
+    // Only run this if we're NOT on an embed page
+    if (window.location.pathname.startsWith('/embed/')) {
+      return; // Exit early if we're on an embed page
+    }
+
     // Function to initialize the agent
     function initVerityAgent() {
       // Check if already initialized
@@ -49,17 +54,55 @@
         return;
       }
 
+      // Clean up any existing suggestions container
+      const existingSuggestions = document.getElementById('verity-agent-suggestions');
+      if (existingSuggestions) {
+        existingSuggestions.remove();
+      }
+
+      // Helper function to get all cookies
+      function getAllCookies() {
+        const cookies = {};
+        document.cookie.split(';').forEach(cookie => {
+          const [name, value] = cookie.trim().split('=');
+          if (name && value) {
+            try {
+              // Try to parse JSON values, fallback to string
+              cookies[name] = JSON.parse(decodeURIComponent(value));
+            } catch {
+              cookies[name] = decodeURIComponent(value);
+            }
+          }
+        });
+        return cookies;
+      }
+
+      // Helper function to get specific cookie by name
+      function getCookie(name) {
+        const value = document.cookie;
+        const parts = value.split(name + '=');
+        if (parts.length === 2) {
+          try {
+            return JSON.parse(decodeURIComponent(parts.pop().split(';').shift()));
+          } catch {
+            return decodeURIComponent(parts.pop().split(';').shift());
+          }
+        }
+        return null;
+      }
+
       const parentOrigin = window.location.origin;
       const parentOriginParam = encodeURIComponent(parentOrigin);
 
       // Tooltip localStorage key
-      const tooltipStorageKey = "verity-agent-tooltip-dismissed-CUS_0bc4c30c-783d-412a-97f2-a6b23348de09";
+      const tooltipStorageKey = "verity-agent-tooltip-dismissed-CUS_7a52fc81-dd2a-4aea-a36d-3e0c4e78fc7d";
+      const isSalesAgentType = true;
       const tooltipDismissed = localStorage.getItem(tooltipStorageKey) === 'true';
 
       // Create tooltip element
       let tooltipEl = null;
       const tooltipMessage = "undefined";
-      if (!tooltipDismissed && tooltipMessage && tooltipMessage.trim()) {
+      if (!isSalesAgentType && !tooltipDismissed && tooltipMessage && tooltipMessage.trim()) {
         tooltipEl = document.createElement('div');
         tooltipEl.id = 'verity-agent-tooltip';
         tooltipEl.style.position = 'fixed';
@@ -95,7 +138,7 @@
       }
 
       const iframe = document.createElement('iframe');
-      iframe.src = "https://chat.veritylabs.ai/embed/CUS_0bc4c30c-783d-412a-97f2-a6b23348de09?token=agent%3ACUS_0bc4c30c-783d-412a-97f2-a6b23348de09%3Acd-QxWhlZ22XQhMAcv4XhI-wOBeUo6NQDH18_E1Z9IA&agent=%7B%22agent_id%22%3A%22CUS_0bc4c30c-783d-412a-97f2-a6b23348de09%22%2C%22model%22%3A%22anthropic_claude_3_5_sonnet_v1%22%2C%22agent_strategy%22%3A%22react%22%2C%22agent_ui_metadata%22%3Anull%7D&parent_origin=" + parentOriginParam;
+      iframe.src = "https://chat.veritylabs.ai/embed/CUS_7a52fc81-dd2a-4aea-a36d-3e0c4e78fc7d?token=agent%3ACUS_7a52fc81-dd2a-4aea-a36d-3e0c4e78fc7d%3AZav13gPG3ueOR_uAUHBknh61Fe8foeBPdfpqiwm3_3A&agent=%7B%22agent_id%22%3A%22CUS_7a52fc81-dd2a-4aea-a36d-3e0c4e78fc7d%22%2C%22model%22%3A%22anthropic_claude_3_haiku_v1%22%2C%22agent_strategy%22%3A%22react%22%2C%22parent_agent_id%22%3A%22preset_220c0328%22%2C%22agent_ui_metadata%22%3Anull%7D&parent_origin=" + parentOriginParam;
       iframe.title = "Verity Agent";
       iframe.style.position = "fixed";
       iframe.style.bottom = "0px";
@@ -109,12 +152,152 @@
       iframe.style.transition = "all 0.3s ease-in-out";
       iframe.id = "verity-agent-iframe";
       document.body.appendChild(iframe);
+      
+      function sendMessageToIframe(message) {
+        if (iframe && iframe.contentWindow && iframeReady) {
+          try {
+            iframe.contentWindow.postMessage(message, "https://chat.veritylabs.ai");
+          } catch (error) {
+            console.warn('Failed to send message to iframe:', error);
+          }
+        }
+      }
+
+      // Track the current path
+      let currentPath = window.location.pathname;
+      let justSentInit = false; // Flag to prevent immediate path_change after init
+
+      // Function to send path change message
+      function sendPathChangeMessage() {
+        // Only send path change if iframe is loaded and ready
+        if (iframe && iframe.contentWindow && iframeReady) {
+          // Don't send path_change immediately after init for the same path
+          if (justSentInit && window.location.pathname === currentPath) {
+            justSentInit = false;
+            return;
+          }
+          
+          sendMessageToIframe({
+            type: 'path_change',
+            payload: {
+              path: window.location.pathname,
+            }
+          });
+        }
+      }
+
+      // Listen for popstate (browser back/forward)
+      window.addEventListener('popstate', function() {
+        sendPathChangeMessage();
+      });
+
+      // Override pushState and replaceState to detect programmatic navigation
+      const originalPushState = history.pushState;
+      const originalReplaceState = history.replaceState;
+
+      history.pushState = function(...args) {
+        originalPushState.apply(history, args);
+        // Small delay to ensure the URL has been updated
+        setTimeout(() => {
+          if (window.location.pathname !== currentPath) {
+            currentPath = window.location.pathname;
+            sendPathChangeMessage();
+          }
+        }, 0);
+      };
+
+      history.replaceState = function(...args) {
+        originalReplaceState.apply(history, args);
+        setTimeout(() => {
+          if (window.location.pathname !== currentPath) {
+            currentPath = window.location.pathname;
+            sendPathChangeMessage();
+          }
+        }, 0);
+      };
+
+      // For frameworks that use hash routing, also listen for hashchange
+      window.addEventListener('hashchange', function() {
+        sendPathChangeMessage();
+      });
+
+      // Wait for iframe to load before sending initial message
+      iframe.onload = function() {
+        // Add a small delay to ensure the iframe is fully ready
+        setTimeout(() => {
+          iframeReady = true;
+          justSentInit = true; // Set flag before sending init
+          sendMessageToIframe({
+            type: 'init',
+            payload: {
+              path: window.location.pathname,
+              user: {
+                // Basic user context
+                userAgent: navigator.userAgent,
+                language: navigator.language,
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                referrer: document.referrer,
+                
+                // Cookie data (very useful for sales agents)
+                cookies: getAllCookies(),
+                
+                // Common sales-related cookies (specific lookups)
+                sessionId: getCookie('sessionId') || getCookie('session_id') || getCookie('sid'),
+                userId: getCookie('userId') || getCookie('user_id') || getCookie('uid'),
+                customerId: getCookie('customerId') || getCookie('customer_id') || getCookie('cid'),
+                leadId: getCookie('leadId') || getCookie('lead_id') || getCookie('lid'),
+                utmSource: getCookie('utm_source'),
+                utmMedium: getCookie('utm_medium'),
+                utmCampaign: getCookie('utm_campaign'),
+                utmTerm: getCookie('utm_term'),
+                utmContent: getCookie('utm_content'),
+                
+                // Analytics and tracking
+                gaClientId: getCookie('_ga') ? getCookie('_ga').split('.').slice(-2).join('.') : null,
+                gtagId: getCookie('_gid'),
+                
+                // E-commerce specific (if applicable)
+                cartId: getCookie('cartId') || getCookie('cart_id'),
+                orderId: getCookie('orderId') || getCookie('order_id'),
+                
+                // User preferences and behavior
+                preferences: getCookie('preferences') || getCookie('user_preferences'),
+                lastVisit: getCookie('lastVisit') || getCookie('last_visit'),
+                visitCount: getCookie('visitCount') || getCookie('visit_count'),
+                
+                // Screen and device info
+                screenWidth: window.screen.width,
+                screenHeight: window.screen.height,
+                viewportWidth: window.innerWidth,
+                viewportHeight: window.innerHeight,
+                
+                // Additional context
+                hostname: window.location.hostname,
+                protocol: window.location.protocol,
+                searchParams: window.location.search,
+                hash: window.location.hash,
+                
+                // You can extend this with any user data available in your app
+                // For example: window.userData, window.customerInfo, etc.
+              }
+            }
+          });
+          
+          // Clear the flag after a short delay to allow future path changes
+          setTimeout(() => {
+            justSentInit = false;
+          }, 1000); // 1 second delay
+        }, 100); // 100ms delay to ensure iframe is ready
+      };
 
       let isOpen = false;
       let currentMode = 'minimized'; // 'minimized', 'expanded', 'fullscreen'
+      let suggestionsContainer = null;
+      let currentSuggestions = [];
+      let iframeReady = false;
       
       // Create storage key for persistent state
-      const stateStorageKey = "verity-agent-state-CUS_0bc4c30c-783d-412a-97f2-a6b23348de09";
+      const stateStorageKey = "verity-agent-state-CUS_7a52fc81-dd2a-4aea-a36d-3e0c4e78fc7d";
 
       // Load persistent state on initialization
       try {
@@ -143,7 +326,7 @@
             setTimeout(() => {
               const payload = parsedState.isFullScreen ? 'fullscreen' : 'expand';
               const message = { type: payload === 'fullscreen' ? 'fullscreen' : 'maximize' };
-              iframe.contentWindow.postMessage(message, "https://chat.veritylabs.ai");
+              sendMessageToIframe(message);
             }, 500); // 500ms delay to ensure iframe is ready
           }
         }
@@ -163,6 +346,174 @@
         } catch (error) {
           console.error('Failed to save persistent state:', error);
         }
+      }
+
+      // Function to create suggestions container
+      function createSuggestionsContainer() {
+        if (suggestionsContainer) return;
+        
+        suggestionsContainer = document.createElement('div');
+        suggestionsContainer.id = 'verity-agent-suggestions';
+        suggestionsContainer.style.position = 'fixed';
+        suggestionsContainer.style.bottom = '110px';
+        suggestionsContainer.style.right = '20px';
+        suggestionsContainer.style.maxWidth = '350px';
+        suggestionsContainer.style.zIndex = '9998';
+        suggestionsContainer.style.display = 'none';
+        suggestionsContainer.style.visibility = 'visible';
+        suggestionsContainer.style.opacity = '1';
+        suggestionsContainer.style.flexDirection = 'column';
+        suggestionsContainer.style.gap = '8px';
+        suggestionsContainer.style.padding = '40px 12px 12px 12px';
+        document.body.appendChild(suggestionsContainer);
+      }
+
+      // Variables for suggestion timing
+      let suggestionTimeout = null;
+      let suggestionHideTimeout = null;
+      let suggestionsShownTime = null;
+
+      // Function to show suggestions
+      function showSuggestions(suggestions) {
+        if (!suggestionsContainer) {
+          createSuggestionsContainer();
+        }
+        
+        if (currentMode !== 'minimized') {
+          suggestionsContainer.style.display = 'none';
+          return;
+        }
+        
+        currentSuggestions = suggestions || [];
+        
+        if (currentSuggestions.length === 0) {
+          suggestionsContainer.style.display = 'none';
+          return;
+        }
+        
+        suggestionsContainer.innerHTML = '';
+        
+        // Add close button to suggestions container
+        const closeButton = document.createElement('button');
+        closeButton.innerHTML = '&times;';
+        closeButton.id = 'verity-suggestions-close';
+        closeButton.style.cssText = `
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          background: #fff;
+          border: 1px solid #e0e0e0;
+          font-size: 18px;
+          color: #888;
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 4px;
+          transition: color 0.2s ease;
+          z-index: 1;
+          min-width: 24px;
+          min-height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        `;
+        closeButton.addEventListener('mouseenter', () => {
+          closeButton.style.color = '#333';
+          closeButton.style.background = '#f8f9fa';
+        });
+        closeButton.addEventListener('mouseleave', () => {
+          closeButton.style.color = '#888';
+          closeButton.style.background = '#fff';
+        });
+        closeButton.addEventListener('click', () => {
+          hideSuggestions();
+        });
+        suggestionsContainer.appendChild(closeButton);
+        
+        currentSuggestions.forEach((suggestion, index) => {
+          const suggestionEl = document.createElement('button');
+          suggestionEl.className = 'verity-suggestion-btn';
+          suggestionEl.textContent = suggestion;
+          suggestionEl.style.cssText = `
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #333;
+            cursor: pointer;
+            text-align: left;
+            width: 100%;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            white-space: normal;
+            overflow: visible;
+            line-height: 1.4;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+          `;
+          
+          // Hover effects
+          suggestionEl.addEventListener('mouseenter', () => {
+            suggestionEl.style.background = '#f8f9fa';
+            suggestionEl.style.borderColor = '#007bff';
+            suggestionEl.style.transform = 'translateY(-1px)';
+            suggestionEl.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+          });
+          
+          suggestionEl.addEventListener('mouseleave', () => {
+            suggestionEl.style.background = '#fff';
+            suggestionEl.style.borderColor = '#e0e0e0';
+            suggestionEl.style.transform = 'translateY(0)';
+            suggestionEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+          });
+          
+          // Click handler
+          suggestionEl.addEventListener('click', () => {
+            // Send the suggestion as a chat message
+            sendMessageToIframe({
+              type: 'chat_message',
+              payload: {
+                message: suggestion,
+                source: 'suggestion'
+              }
+            });
+            
+            // Hide suggestions after clicking
+            hideSuggestions();
+          });
+          
+          suggestionsContainer.appendChild(suggestionEl);
+        });
+        
+        suggestionsContainer.style.display = 'flex';
+        suggestionsShownTime = Date.now();
+        
+        // Set timeout to hide suggestions after 20 seconds
+        if (suggestionHideTimeout) {
+          clearTimeout(suggestionHideTimeout);
+        }
+        suggestionHideTimeout = setTimeout(() => {
+          // Only hide if suggestions are still visible
+          if (suggestionsContainer && suggestionsContainer.style.display !== 'none') {
+            hideSuggestions();
+          }
+        }, 20000); // 20 seconds
+      }
+
+      // Function to hide suggestions
+      function hideSuggestions() {
+        if (suggestionsContainer) {
+          suggestionsContainer.style.display = 'none';
+        }
+        
+        // Clear the hide timeout
+        if (suggestionHideTimeout) {
+          clearTimeout(suggestionHideTimeout);
+          suggestionHideTimeout = null;
+        }
+        
+        suggestionsShownTime = null;
       }
 
       window.addEventListener("message", function (e) {
@@ -187,6 +538,13 @@
                 }, 200);
                 localStorage.setItem(tooltipStorageKey, 'true');
               }
+              // Hide suggestions when expanding
+              hideSuggestions();
+              // Clear any pending suggestion timeout
+              if (suggestionTimeout) {
+                clearTimeout(suggestionTimeout);
+                suggestionTimeout = null;
+              }
               break;
             case "fullscreen":
               iframe.style.width = "min(90vw, 400px)";
@@ -205,6 +563,13 @@
                 }, 200);
                 localStorage.setItem(tooltipStorageKey, 'true');
               }
+              // Hide suggestions when going fullscreen
+              hideSuggestions();
+              // Clear any pending suggestion timeout
+              if (suggestionTimeout) {
+                clearTimeout(suggestionTimeout);
+                suggestionTimeout = null;
+              }
               break;
             case "minimize":
               iframe.style.width = "90px";
@@ -215,7 +580,26 @@
               isOpen = false;
               currentMode = 'minimized';
               saveState();
+              // Show suggestions if we have any when minimizing
+              if (currentSuggestions.length > 0) {
+                showSuggestions(currentSuggestions);
+              }
               break;
+          }
+        }
+
+        if (e.data.type === "dynamic_suggestions") {
+          const suggestions = e.data.payload;
+          if (Array.isArray(suggestions)) {
+            // Clear any existing timeout
+            if (suggestionTimeout) {
+              clearTimeout(suggestionTimeout);
+            }
+            
+            // Show suggestions after 5 seconds
+            suggestionTimeout = setTimeout(() => {
+              showSuggestions(suggestions);
+            }, 5000); // 5 seconds
           }
         }
       });
@@ -244,7 +628,7 @@
         }
         
         const message = { type: messageType };
-        iframe.contentWindow.postMessage(message, "https://chat.veritylabs.ai");
+        sendMessageToIframe(message);
         // Hide tooltip if chat is opened
         if (messageType === 'maximize' || messageType === 'fullscreen') {
           if (tooltipEl) {
@@ -254,18 +638,30 @@
             }, 200);
             localStorage.setItem(tooltipStorageKey, 'true');
           }
+          // Hide suggestions when opening chat
+          hideSuggestions();
+          // Clear any pending suggestion timeout
+          if (suggestionTimeout) {
+            clearTimeout(suggestionTimeout);
+            suggestionTimeout = null;
+          }
+        } else if (messageType === 'minimize') {
+          // Show suggestions if we have any when minimizing
+          if (currentSuggestions.length > 0) {
+            showSuggestions(currentSuggestions);
+          }
         }
       };
     }
 
-    // Initialize when DOM is ready
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initVerityAgent);
-    } else {
-      // DOM is already ready, initialize immediately
-      initVerityAgent();
-    }
-  })();
+          // Initialize when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initVerityAgent);
+      } else {
+        // DOM is already ready, initialize immediately
+        initVerityAgent();
+      }
+    })();
 </script>
 </body>
 </html>
